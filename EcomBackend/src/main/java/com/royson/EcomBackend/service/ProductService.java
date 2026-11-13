@@ -8,6 +8,8 @@ import com.royson.EcomBackend.repository.CategoryRepo;
 import com.royson.EcomBackend.repository.ProductRepo;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class ProductService {
 
@@ -45,6 +47,55 @@ public class ProductService {
         return convertToResponse(savedProduct);
     }
 
+    public List<ProductResponse> getAllProducts(){
+        return productRepo.findAll()
+                .stream()
+                .map(this::convertToResponse)
+                .toList();
+    }
+
+    public ProductResponse getProductById(Long id){
+
+        ProductEntity product = productRepo.findById(id)
+                .orElseThrow(()->new RuntimeException("Product not found"));
+
+        return convertToResponse(product);
+    }
+
+    public ProductResponse updateProduct(Long id,ProductRequest request){
+
+        ProductEntity product = productRepo.findById(id)
+                .orElseThrow(()->new RuntimeException("Product not found"));
+
+        product.setName(request.getName());
+        product.setSku(request.getSku());
+        product.setBrand(request.getBrand());
+        product.setDescription(request.getDescription());
+        product.setSellingPrice(request.getSellingPrice());
+        product.setOriginalPrice(request.getOriginalPrice());
+        product.setStockQuantity(request.getStockQuantity());
+        product.setImageUrl(request.getImageUrl());
+        product.setStatus(request.getStatus());
+
+        CategoryEntity category = categoryRepo.findById(request.getCategoryId())
+                .orElseThrow(()->new RuntimeException("Category not found"));
+
+        product.setCategory(category);
+
+        ProductEntity updatedProduct = productRepo.save(product);
+
+        return convertToResponse(updatedProduct);
+    }
+
+    public void deleteProduct(Long id){
+
+        if(!productRepo.existsById(id)){
+            throw new RuntimeException("Product does not exist");
+        }
+
+        productRepo.deleteById(id);
+    }
+
     private ProductResponse convertToResponse(ProductEntity product) {
 
          return new ProductResponse(
@@ -64,4 +115,33 @@ public class ProductService {
                  product.getUpdatedAt()
          );
     }
+
+
+    public List<ProductResponse> searchProducts(String query) {
+
+        return productRepo
+                .findByNameContainingIgnoreCaseOrSkuContainingIgnoreCaseOrBrandContainingIgnoreCase(
+                        query, query, query
+                )
+                .stream()
+                .map(this::convertToResponse)
+                .toList();
+    }
+
+    public List<ProductResponse> getProductsByCategory(Long categoryId) {
+
+        return productRepo.findByCategory_Id(categoryId)
+                .stream()
+                .map(this::convertToResponse)
+                .toList();
+    }
+
+    public List<ProductResponse> getProductsByStatus(String status) {
+
+        return productRepo.findByStatusIgnoreCase(status)
+                .stream()
+                .map(this::convertToResponse)
+                .toList();
+    }
+
 }

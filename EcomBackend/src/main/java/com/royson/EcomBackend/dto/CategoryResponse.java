@@ -12,6 +12,8 @@ public class CategoryResponse {
     private String name;
     private String description;
     private String status;
+    private Long linkedProducts;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
 }

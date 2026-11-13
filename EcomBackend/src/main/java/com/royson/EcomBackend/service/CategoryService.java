@@ -1,24 +1,31 @@
+
 package com.royson.EcomBackend.service;
 
-import java.net.CacheRequest;
 import java.util.List;
 
 import com.royson.EcomBackend.entity.CategoryEntity;
+import com.royson.EcomBackend.repository.ProductRepo;
 import org.springframework.stereotype.Service;
 
 import com.royson.EcomBackend.dto.CategoryResponse;
 import com.royson.EcomBackend.dto.CategoryRequest;
 import com.royson.EcomBackend.repository.CategoryRepo;
 
-@Service 
+@Service
 public class CategoryService {
-    private final CategoryRepo categoryRepo;
 
-    public CategoryService(CategoryRepo categoryRepo){
-        this.categoryRepo=categoryRepo;
+    private final CategoryRepo categoryRepo;
+    private final ProductRepo productRepo;
+
+    public CategoryService(
+            CategoryRepo categoryRepo,
+            ProductRepo productRepo
+    ) {
+        this.categoryRepo = categoryRepo;
+        this.productRepo = productRepo;
     }
 
-    public CategoryResponse addCategory(CategoryRequest request){
+    public CategoryResponse addCategory(CategoryRequest request) {
 
         CategoryEntity category = new CategoryEntity();
 
@@ -39,19 +46,19 @@ public class CategoryService {
                 .toList();
     }
 
-    public CategoryResponse getCategoryById(Long id){
+    public CategoryResponse getCategoryById(Long id) {
 
         CategoryEntity category = categoryRepo.findById(id).orElseThrow(
-                ()->new RuntimeException("Category not found: "+id)
+                () -> new RuntimeException("Category not found: " + id)
         );
 
         return convertToResponse(category);
     }
 
-    public CategoryResponse updateCategory(Long id,CategoryRequest request){
+    public CategoryResponse updateCategory(Long id, CategoryRequest request) {
 
         CategoryEntity category = categoryRepo.findById(id).orElseThrow(
-                ()->new RuntimeException("Category not found: "+id)
+                () -> new RuntimeException("Category not found: " + id)
         );
 
         category.setName(request.getName());
@@ -63,9 +70,10 @@ public class CategoryService {
         return convertToResponse(updatedCategory);
     }
 
-    public void deleteCategory(Long id){
-        if(!categoryRepo.existsById(id)){
-            throw new RuntimeException("Category not found "+id);
+    public void deleteCategory(Long id) {
+
+        if (!categoryRepo.existsById(id)) {
+            throw new RuntimeException("Category not found: " + id);
         }
 
         categoryRepo.deleteById(id);
@@ -73,11 +81,14 @@ public class CategoryService {
 
     private CategoryResponse convertToResponse(CategoryEntity category) {
 
+        Long linkedProducts = productRepo.countByCategory_Id(category.getId());
+
         return new CategoryResponse(
                 category.getId(),
                 category.getName(),
                 category.getDescription(),
                 category.getStatus(),
+                linkedProducts,
                 category.getCreatedAt(),
                 category.getUpdatedAt()
         );
