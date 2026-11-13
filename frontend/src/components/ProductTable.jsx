@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Eye,
   Edit2,
@@ -11,8 +12,11 @@ import {
   ChevronRight,
   PackageOpen
 } from 'lucide-react';
+
 import { useApp } from '../context/AppContext';
 import productService from '../services/productService';
+import categoryService from '../services/categoryService';
+
 import ConfirmDialog from './ConfirmDialog';
 import StockUpdateModal from './StockUpdateModal';
 import LoadingSpinner from './LoadingSpinner';
@@ -21,137 +25,287 @@ import EmptyState from './EmptyState';
 
 export const ProductTable = () => {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useApp();
 
-  // Component State
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Search & Filter State
-  const [searchInput, setSearchInput] = useState(searchParams.get('search') || '');
-  const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || 'All');
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'All');
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
 
-  // Modal Candidates
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
   const [deleteCandidate, setDeleteCandidate] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [stockCandidate, setStockCandidate] = useState(null);
 
-  // Pagination UI State
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  // Validate product ID before navigation
+  const openProduct = (product, action = 'view') => {
+    const id = product?.id;
 
-  // Fetch products from Spring Boot Backend API
-  const fetchProducts = async () => {
+    if (id === undefined || id === null || String(id).trim() === '') {
+      showToast(
+        'Cannot open product: backend did not provide a valid product ID.',
+        'danger'
+      );
+      return;
+    }
+
+    if (action === 'edit') {
+      navigate(`/products/${id}/edit`);
+    } else {
+      navigate(`/products/${id}`);
+    }
+  };
+
+  // Fetch products from backend
+  const fetchProducts = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const queryParams = {
-      page: page - 1, // Spring Boot Pageable is 0-indexed
-      size: 10
-    };
-
-    if (searchInput.trim()) queryParams.search = searchInput.trim();
-    if (categoryFilter !== 'All') queryParams.category = categoryFilter;
-    if (statusFilter !== 'All') queryParams.status = statusFilter;
-
     try {
-      const data = await productService.getAllProducts(queryParams);
+      let data;
 
-      // Handle both raw Array or Spring Data Page object { content: [...], totalPages, totalElements }
-      if (Array.isArray(data)) {
-        setProducts(data);
-        setTotalCount(data.length);
-        setTotalPages(Math.ceil(data.length / 10) || 1);
-      } else if (data?.content && Array.isArray(data.content)) {
-        setProducts(data.content);
-        setTotalCount(data.totalElements || data.content.length);
-        setTotalPages(data.totalPages || 1);
+      if (appliedSearch.trim()) {
+        data = await productService.searchProducts(appliedSearch.trim());
       } else {
-        setProducts([]);
-        setTotalCount(0);
-        setTotalPages(1);
+        data = await productService.getAllProducts();
       }
+
+      const productList = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.content)
+          ? data.content
+          : [];
+
+      setProducts(productList);
+
     } catch (err) {
-      setError(err.message || 'Failed to fetch products from backend.');
+      setError(err.message || 'Failed to fetch products.');
       setProducts([]);
+
     } finally {
       setLoading(false);
+    }
+  }, [appliedSearch]);
+
+  // Fetch categories
+  const fetchCategories = async () => {
+    try {
+      const data = await categoryService.getAllCategories();
+
+      const categoryList = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.content)
+          ? data.content
+          : [];
+
+      setCategories(categoryList);
+
+    } catch (err) {
+      console.error('Category fetching error:', err);
     }
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, [page, categoryFilter, statusFilter]);
+    fetchCategories();
+  }, []);
 
-  // Handle Search Submission (ready for Spring Boot search endpoint)
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // Search submit
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setPage(1);
-    fetchProducts();
+    setAppliedSearch(searchInput.trim());
   };
 
-  // Handle Delete Confirmation & API Call
+  // Clear search
+  const handleClearSearch = () => {
+    setSearchInput('');
+    setAppliedSearch('');
+    setPage(1);
+  };
+
+  // Stock status
+  const getStockStatus = (product) => {
+    const stock = Number(product.stockQuantity) || 0;
+    const threshold = Number(product.lowStockThreshold) || 10;
+
+    if (stock === 0) return 'OUT_OF_STOCK';
+    if (stock <= threshold) return 'LOW_STOCK';
+
+    return 'IN_STOCK';
+  };
+
+  // Filter products
+  const filteredProducts = products.filter((product) => {
+    const matchesCategory =
+      categoryFilter === 'All' ||
+      String(product.categoryId) === categoryFilter;
+
+    let matchesStatus = true;
+
+    if (statusFilter === 'ACTIVE' || statusFilter === 'INACTIVE') {
+      matchesStatus =
+        String(product.status || '').toUpperCase() === statusFilter;
+    } else if (statusFilter === 'IN_STOCK') {
+      matchesStatus = getStockStatus(product) === 'IN_STOCK';
+    } else if (statusFilter === 'LOW_STOCK') {
+      matchesStatus = getStockStatus(product) === 'LOW_STOCK';
+    } else if (statusFilter === 'OUT_OF_STOCK') {
+      matchesStatus = getStockStatus(product) === 'OUT_OF_STOCK';
+    }
+
+    return matchesCategory && matchesStatus;
+  });
+
+  // Pagination
+  const totalCount = filteredProducts.length;
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalCount / pageSize)
+  );
+
+  const currentPage = Math.min(page, totalPages);
+
+  const paginatedProducts = filteredProducts.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  // Currency formatting
+  const formatINR = (value) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(Number(value) || 0);
+  };
+
+  // Status badge
+  const getStatusBadge = (product) => {
+    const status = String(product.status || '').toUpperCase();
+    const stockStatus = getStockStatus(product);
+
+    if (stockStatus === 'OUT_OF_STOCK') {
+      return <span className="badge badge-out-of-stock">Out of Stock</span>;
+    }
+
+    if (stockStatus === 'LOW_STOCK') {
+      return <span className="badge badge-low-stock">Low Stock</span>;
+    }
+
+    if (status === 'INACTIVE') {
+      return <span className="badge badge-draft">Inactive</span>;
+    }
+
+    return <span className="badge badge-in-stock">Active</span>;
+  };
+
+  // Delete product
   const handleDeleteConfirm = async () => {
     if (!deleteCandidate) return;
+
+    if (
+      deleteCandidate.id === undefined ||
+      deleteCandidate.id === null ||
+      String(deleteCandidate.id).trim() === ''
+    ) {
+      showToast('Invalid product ID. Cannot delete product.', 'danger');
+      return;
+    }
+
     setDeleting(true);
 
     try {
-      // Send DELETE request to Spring Boot backend
       await productService.deleteProduct(deleteCandidate.id);
-      showToast(`Product "${deleteCandidate.name}" deleted from backend!`, 'success');
+
+      showToast(
+        `Product "${deleteCandidate.name}" deleted successfully!`,
+        'success'
+      );
+
       setDeleteCandidate(null);
-      fetchProducts();
+      await fetchProducts();
+
     } catch (err) {
       showToast(`Delete failed: ${err.message}`, 'danger');
+
     } finally {
       setDeleting(false);
     }
   };
 
-  const formatINR = (val) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0
-    }).format(val || 0);
-  };
-
-  const getStatusBadge = (status, stock) => {
-    if (status === 'Out of Stock' || stock === 0) {
-      return <span className="badge badge-out-of-stock">Out of Stock</span>;
-    }
-    if (status === 'Low Stock' || (stock !== undefined && stock <= 10)) {
-      return <span className="badge badge-low-stock">Low Stock</span>;
-    }
-    if (status === 'Draft') {
-      return <span className="badge badge-draft">Draft</span>;
-    }
-    return <span className="badge badge-in-stock">In Stock</span>;
-  };
-
   return (
     <div>
-      {/* Search and Filters Toolbar */}
+
+      {/* Search and Filters */}
       <div className="filter-toolbar">
-        {/* Search UI & Search Button */}
-        <form onSubmit={handleSearchSubmit} className="search-input-box">
+
+        <form
+          onSubmit={handleSearchSubmit}
+          className="search-input-box"
+        >
           <Search size={16} color="#94a3b8" />
+
           <input
             type="text"
-            placeholder="Search products (queries Spring Boot API)..."
+            placeholder="Search by product name, SKU or brand..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
-          <button type="submit" className="btn btn-primary btn-sm">
+
+          {searchInput && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={handleClearSearch}
+            >
+              Clear
+            </button>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-sm"
+          >
             Search
           </button>
         </form>
 
         <div className="filter-left-controls">
+
+          <select
+            className="select-dropdown"
+            value={categoryFilter}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="All">All Categories</option>
+
+            {categories.map((category) => (
+              <option
+                key={category.id}
+                value={String(category.id)}
+              >
+                {category.name}
+              </option>
+            ))}
+          </select>
+
           <select
             className="select-dropdown"
             value={statusFilter}
@@ -161,43 +315,75 @@ export const ProductTable = () => {
             }}
           >
             <option value="All">All Statuses</option>
-            <option value="In Stock">In Stock</option>
-            <option value="Low Stock">Low Stock</option>
-            <option value="Out of Stock">Out of Stock</option>
-            <option value="Draft">Draft</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+            <option value="IN_STOCK">In Stock</option>
+            <option value="LOW_STOCK">Low Stock</option>
+            <option value="OUT_OF_STOCK">Out of Stock</option>
           </select>
+
         </div>
 
-        <Link to="/products/new" className="btn btn-primary">
+        <Link
+          to="/products/new"
+          className="btn btn-primary"
+        >
           <Plus size={16} />
           <span>Add Product</span>
         </Link>
+
       </div>
 
-      {/* Loading State */}
-      {loading && <LoadingSpinner message="Fetching products from Spring Boot backend..." />}
-
-      {/* Error State */}
-      {!loading && error && (
-        <ErrorMessage message={error} onRetry={fetchProducts} />
+      {/* Loading */}
+      {loading && (
+        <LoadingSpinner message="Fetching products..." />
       )}
 
-      {/* Empty State when no products returned from backend */}
-      {!loading && !error && products.length === 0 && (
+      {/* Error */}
+      {!loading && error && (
+        <ErrorMessage
+          message={error}
+          onRetry={fetchProducts}
+        />
+      )}
+
+      {/* Empty State */}
+      {!loading && !error && filteredProducts.length === 0 && (
         <EmptyState
           icon={PackageOpen}
-          title="No Products Found in Database"
-          description="Your Spring Boot backend returned 0 product records. Click below to add your first product."
-          actionText="Add First Product"
-          onAction={() => navigate('/products/new')}
+          title={
+            products.length === 0
+              ? 'No Products Found'
+              : 'No Matching Products'
+          }
+          description={
+            products.length === 0
+              ? 'Your database currently has no products.'
+              : 'Try changing your search or filter selections.'
+          }
+          actionText={
+            products.length === 0
+              ? 'Add First Product'
+              : 'Clear Filters'
+          }
+          onAction={() => {
+            if (products.length === 0) {
+              navigate('/products/new');
+            } else {
+              handleClearSearch();
+              setCategoryFilter('All');
+              setStatusFilter('All');
+            }
+          }}
         />
       )}
 
       {/* Product Table */}
-      {!loading && !error && products.length > 0 && (
+      {!loading && !error && paginatedProducts.length > 0 && (
         <>
           <div className="table-responsive">
             <table className="admin-table">
+
               <thead>
                 <tr>
                   <th>Product</th>
@@ -212,27 +398,39 @@ export const ProductTable = () => {
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
+
               <tbody>
-                {products.map((p) => {
-                  const addedDate = p.createdAt
-                    ? new Date(p.createdAt).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
-                      })
+                {paginatedProducts.map((product, index) => {
+                  const addedDate = product.createdAt
+                    ? new Date(product.createdAt).toLocaleDateString(
+                        'en-IN',
+                        {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        }
+                      )
                     : 'N/A';
 
+                  const hasValidId =
+                    product.id !== undefined &&
+                    product.id !== null &&
+                    String(product.id).trim() !== '';
+
                   return (
-                    <tr key={p.id}>
+                    <tr key={hasValidId ? product.id : `invalid-${index}`}>
+
+                      {/* Product */}
                       <td>
                         <div className="product-row-info">
-                          {p.mainImage ? (
+
+                          {product.imageUrl ? (
                             <img
-                              src={p.mainImage}
-                              alt={p.name}
+                              src={product.imageUrl}
+                              alt={product.name}
                               className="product-row-thumb"
                               onError={(e) => {
-                                e.target.style.display = 'none';
+                                e.currentTarget.style.display = 'none';
                               }}
                             />
                           ) : (
@@ -251,73 +449,140 @@ export const ProductTable = () => {
                               <PackageOpen size={20} />
                             </div>
                           )}
+
                           <div className="product-row-meta">
-                            <Link to={`/products/${p.id}`} className="product-row-name">
-                              {p.name}
-                            </Link>
-                            <span className="product-row-sub">{p.subcategory || p.category}</span>
+                            {hasValidId ? (
+                              <Link
+                                to={`/products/${product.id}`}
+                                className="product-row-name"
+                              >
+                                {product.name}
+                              </Link>
+                            ) : (
+                              <span className="product-row-name">
+                                {product.name}
+                              </span>
+                            )}
+
+                            <span className="product-row-sub">
+                              {product.categoryName || '—'}
+                            </span>
                           </div>
                         </div>
                       </td>
+
+                      {/* SKU */}
                       <td>
-                        <code style={{ fontSize: '12px', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
-                          {p.sku || p.id}
+                        <code
+                          style={{
+                            fontSize: '12px',
+                            background: '#f1f5f9',
+                            padding: '2px 6px',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          {product.sku || product.id || 'Missing ID'}
                         </code>
                       </td>
-                      <td>{p.category || '—'}</td>
-                      <td>{p.brand || '—'}</td>
+
+                      <td>{product.categoryName || '—'}</td>
+                      <td>{product.brand || '—'}</td>
+
                       <td>
-                        <span style={{ fontWeight: 700 }}>{formatINR(p.sellingPrice)}</span>
-                      </td>
-                      <td>
-                        <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '12px' }}>
-                          {formatINR(p.originalPrice)}
+                        <span style={{ fontWeight: 700 }}>
+                          {formatINR(product.sellingPrice)}
                         </span>
                       </td>
+
                       <td>
-                        <span style={{ fontWeight: 600 }}>{p.stock ?? 0}</span>
-                        <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 4 }}>units</span>
+                        <span
+                          style={{
+                            textDecoration: 'line-through',
+                            color: '#94a3b8',
+                            fontSize: '12px'
+                          }}
+                        >
+                          {formatINR(product.originalPrice)}
+                        </span>
                       </td>
-                      <td>{getStatusBadge(p.status, p.stock)}</td>
+
                       <td>
-                        <span style={{ fontSize: '12px', color: '#64748b' }}>{addedDate}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {Number(product.stockQuantity) || 0}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            color: '#94a3b8',
+                            marginLeft: 4
+                          }}
+                        >
+                          units
+                        </span>
                       </td>
+
+                      <td>{getStatusBadge(product)}</td>
+
                       <td>
-                        <div className="action-buttons-group" style={{ justifyContent: 'flex-end' }}>
+                        <span
+                          style={{
+                            fontSize: '12px',
+                            color: '#64748b'
+                          }}
+                        >
+                          {addedDate}
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td>
+                        <div
+                          className="action-buttons-group"
+                          style={{ justifyContent: 'flex-end' }}
+                        >
+
                           <button
                             type="button"
                             className="btn btn-outline btn-icon btn-sm"
                             title="View Product Details"
-                            onClick={() => navigate(`/products/${p.id}`)}
+                            disabled={!hasValidId}
+                            onClick={() => openProduct(product, 'view')}
                           >
                             <Eye size={14} />
                           </button>
+
                           <button
                             type="button"
                             className="btn btn-outline btn-icon btn-sm"
-                            title="Update Stock via Backend"
-                            onClick={() => setStockCandidate(p)}
+                            title="Update Stock"
+                            onClick={() => setStockCandidate(product)}
                           >
                             <Boxes size={14} color="#d97706" />
                           </button>
+
                           <button
                             type="button"
                             className="btn btn-outline btn-icon btn-sm"
                             title="Edit Product"
-                            onClick={() => navigate(`/products/${p.id}/edit`)}
+                            disabled={!hasValidId}
+                            onClick={() => openProduct(product, 'edit')}
                           >
                             <Edit2 size={14} color="#2563eb" />
                           </button>
+
                           <button
                             type="button"
                             className="btn btn-danger-outline btn-icon btn-sm"
                             title="Delete Product"
-                            onClick={() => setDeleteCandidate(p)}
+                            disabled={!hasValidId}
+                            onClick={() => setDeleteCandidate(product)}
                           >
                             <Trash2 size={14} />
                           </button>
+
                         </div>
                       </td>
+
                     </tr>
                   );
                 })}
@@ -325,53 +590,65 @@ export const ProductTable = () => {
             </table>
           </div>
 
-          {/* Pagination UI */}
+          {/* Pagination */}
           <div className="pagination-wrapper">
             <span>
-              Showing {products.length} of {totalCount} total products
+              Showing {paginatedProducts.length} of {totalCount} products
             </span>
+
             <div className="pagination-controls">
+
               <button
                 type="button"
                 className="page-btn"
-                disabled={page <= 1}
+                disabled={currentPage <= 1}
                 onClick={() => setPage((p) => Math.max(p - 1, 1))}
               >
                 <ChevronLeft size={16} />
               </button>
-              <span style={{ fontSize: '12.5px', padding: '0 8px', fontWeight: 600 }}>
-                Page {page} of {totalPages}
+
+              <span
+                style={{
+                  fontSize: '12.5px',
+                  padding: '0 8px',
+                  fontWeight: 600
+                }}
+              >
+                Page {currentPage} of {totalPages}
               </span>
+
               <button
                 type="button"
                 className="page-btn"
-                disabled={page >= totalPages}
+                disabled={currentPage >= totalPages}
                 onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
               >
                 <ChevronRight size={16} />
               </button>
+
             </div>
           </div>
         </>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={!!deleteCandidate}
-        title="Delete Product from Backend"
-        message={`Are you sure you want to delete "${deleteCandidate?.name}" (${deleteCandidate?.sku || deleteCandidate?.id})? A DELETE request will be sent to your Spring Boot API.`}
-        confirmText={deleting ? 'Deleting on Backend...' : 'Confirm Delete'}
+        title="Delete Product"
+        message={`Are you sure you want to delete "${deleteCandidate?.name}" (${deleteCandidate?.sku || deleteCandidate?.id})?`}
+        confirmText={deleting ? 'Deleting...' : 'Confirm Delete'}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteCandidate(null)}
       />
 
-      {/* Stock Update Modal */}
+      {/* Stock Update */}
       <StockUpdateModal
         isOpen={!!stockCandidate}
         product={stockCandidate}
         onClose={() => setStockCandidate(null)}
         onSuccess={fetchProducts}
       />
+
     </div>
   );
 };

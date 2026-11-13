@@ -1,20 +1,39 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Menu, Search, Plus, Radio } from 'lucide-react';
+
+import React from 'react';
+import {
+  Menu,
+  Bell,
+  CalendarDays,
+  Sparkles
+} from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { API_BASE_URL } from '../services/api';
 
 export const Header = ({ setMobileOpen }) => {
-  const navigate = useNavigate();
-  const [headerSearch, setHeaderSearch] = useState('');
+  const location = useLocation();
 
-  const handleHeaderSearch = (e) => {
-    e.preventDefault();
-    if (headerSearch.trim()) {
-      navigate(`/products?search=${encodeURIComponent(headerSearch.trim())}`);
-    } else {
-      navigate('/products');
-    }
+  const today = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }).format(new Date());
+
+  const pageNames = {
+    '/': 'Dashboard',
+    '/products': 'Products',
+    '/categories': 'Categories',
+    '/inventory': 'Inventory',
+    '/settings': 'Settings'
   };
+
+  const pageName =
+    pageNames[location.pathname] ||
+    (location.pathname.endsWith('/edit')
+      ? 'Edit Product'
+      : location.pathname.endsWith('/new')
+      ? 'Add Product'
+      : 'Product Details');
 
   return (
     <header className="top-header">
@@ -25,48 +44,49 @@ export const Header = ({ setMobileOpen }) => {
           onClick={() => setMobileOpen(true)}
           aria-label="Open navigation menu"
         >
-          <Menu size={22} />
+          <Menu size={21} />
         </button>
 
-        {/* Global Search Bar (ready for backend) */}
-        <form onSubmit={handleHeaderSearch} className="header-search-bar">
-          <Search size={16} color="#94a3b8" />
-          <input
-            type="text"
-            className="header-search-input"
-            placeholder="Search products by name or SKU..."
-            value={headerSearch}
-            onChange={(e) => setHeaderSearch(e.target.value)}
-          />
-          <button type="submit" style={{ display: 'none' }}>Search</button>
-          <span className="search-shortcut">↵</span>
-        </form>
+        <div className="header-brand">
+          <div className="header-brand-icon">
+            <Sparkles size={17} />
+          </div>
+
+          <div className="header-page-info">
+            <div className="header-page-title">{pageName}</div>
+            <div className="header-breadcrumb">
+              Workspace / {pageName}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="header-right">
-        {/* Backend Target Indicator */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '12px',
-            color: '#64748b',
-            padding: '4px 10px',
-            backgroundColor: '#f1f5f9',
-            borderRadius: '9999px'
-          }}
-          title={`Configured Backend: ${API_BASE_URL}`}
-        >
-          <Radio size={12} color="#059669" />
-          <span>API: <code>{API_BASE_URL}</code></span>
+        <div className="header-date">
+          <CalendarDays size={15} />
+          <span>{today}</span>
         </div>
 
-        {/* Quick Add Product Button */}
-        <Link to="/products/new" className="btn btn-primary btn-sm">
-          <Plus size={15} />
-          <span>Add Product</span>
-        </Link>
+        <div
+          className="header-api-status"
+          title={`Configured API: ${API_BASE_URL}`}
+        >
+          <span className="header-api-dot" />
+          API
+        </div>
+
+        <button
+          type="button"
+          className="header-notification"
+          title="Notifications"
+          aria-label="Notifications"
+        >
+          <Bell size={17} />
+        </button>
+
+        <div className="header-profile" title="Administrator">
+          AD
+        </div>
       </div>
     </header>
   );

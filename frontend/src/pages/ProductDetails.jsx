@@ -75,10 +75,10 @@ export const ProductDetails = () => {
 
   const getStockStatusBadge = () => {
     if (!product) return null;
-    if (product.stock === 0) {
+    if (product.stockQuantity === 0) {
       return <span className="badge badge-out-of-stock">Out of Stock</span>;
     }
-    if (product.stock <= (product.lowStockThreshold || 10)) {
+    if (product.stockQuantity <= (product.lowStockThreshold || 10)) {
       return <span className="badge badge-low-stock">Low Stock Warning</span>;
     }
     return <span className="badge badge-in-stock">In Stock</span>;
@@ -108,8 +108,8 @@ export const ProductDetails = () => {
     );
   }
 
-  const currentCover = activeImage || product.mainImage;
-  const allImages = [product.mainImage, ...(product.additionalImages || [])].filter(Boolean);
+  const currentCover = activeImage || product.imageUrl;
+  const allImages = [product.imageUrl, ...(product.additionalImages || [])].filter(Boolean);
 
   return (
     <div className="page-container">
@@ -296,7 +296,7 @@ export const ProductDetails = () => {
                 <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Backend Stock</span>
                   <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a' }}>
-                    {product.stock ?? 0} <span style={{ fontSize: '13px', fontWeight: 500 }}>units</span>
+                    {product.stockQuantity ?? 0} <span style={{ fontSize: '13px', fontWeight: 500 }}>units</span>
                   </div>
                 </div>
 
@@ -310,7 +310,7 @@ export const ProductDetails = () => {
                 <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Stock Valuation</span>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: 4 }}>
-                    {formatINR((product.sellingPrice || 0) * (product.stock || 0))}
+                    {formatINR((product.sellingPrice || 0) * (product.stockQuantity || 0))}
                   </div>
                 </div>
               </div>
@@ -336,62 +336,6 @@ export const ProductDetails = () => {
         </div>
       </div>
 
-      {/* Specifications & Details */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '24px', marginBottom: '24px' }}>
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Technical Specifications</h3>
-          </div>
-          <div className="card-body" style={{ padding: 0 }}>
-            {product.specifications?.length > 0 ? (
-              <table className="admin-table">
-                <tbody>
-                  {product.specifications.map((spec, index) => (
-                    <tr key={index}>
-                      <td style={{ width: '40%', fontWeight: 600, color: '#64748b', backgroundColor: '#fafbfc' }}>
-                        {spec.key}
-                      </td>
-                      <td style={{ fontWeight: 500, color: '#0f172a' }}>
-                        {spec.value}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
-                No technical specifications recorded in database.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Physical & Manufacturing Info</h3>
-          </div>
-          <div className="card-body">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '13.5px', color: '#64748b' }}>Item Weight</span>
-                <span style={{ fontSize: '14px', fontWeight: 600 }}>{product.weight || '—'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '13.5px', color: '#64748b' }}>Dimensions</span>
-                <span style={{ fontSize: '14px', fontWeight: 600 }}>{product.dimensions || '—'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '13.5px', color: '#64748b' }}>Manufacturer</span>
-                <span style={{ fontSize: '14px', fontWeight: 600 }}>{product.manufacturer || '—'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '13.5px', color: '#64748b' }}>Warranty</span>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#059669' }}>{product.warranty || '—'}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Confirmation Dialog for Product Deletion */}
       <ConfirmDialog

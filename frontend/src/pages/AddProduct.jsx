@@ -1,9 +1,36 @@
+
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { ChevronRight, ArrowLeft, AlertCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  ChevronRight,
+  ArrowLeft,
+  AlertCircle
+} from 'lucide-react';
+
 import ProductForm from '../components/ProductForm';
 import { useApp } from '../context/AppContext';
 import productService from '../services/productService';
+
+// The backend returns the Cloudinary secure URL as a plain String.
+const extractImageUrl = (uploadResult) => {
+  if (typeof uploadResult === 'string') {
+    return uploadResult.trim();
+  }
+
+  return (
+    uploadResult?.imageUrl ||
+    uploadResult?.url ||
+    ''
+  ).trim();
+};
+
+const isPermanentImageUrl = (url) => {
+  return (
+    typeof url === 'string' &&
+    (url.startsWith('https://') || url.startsWith('http://')) &&
+    !url.startsWith('blob:')
+  );
+};
 
 export const AddProduct = () => {
   const navigate = useNavigate();
@@ -17,31 +44,71 @@ export const AddProduct = () => {
     setErrorMessage(null);
 
     try {
-      // 1. If an image file was selected and backend image upload endpoint is active, upload image first
+      // Make a separate payload so the original form data is not mutated.
+      const productPayload = { ...cleanedPayload };
+
+      // 1. Upload the actual selected file to Cloudinary.
       if (mainImageFile) {
-        try {
-          const uploadResult = await productService.uploadProductImage(mainImageFile);
-          if (uploadResult?.imageUrl || uploadResult?.url) {
-            cleanedPayload.mainImage = uploadResult.imageUrl || uploadResult.url;
-          }
-        } catch (imgErr) {
-          console.warn('[AddProduct] Image upload endpoint not active yet. Saving product payload directly.');
+        const uploadResult =
+          await productService.uploadProductImage(mainImageFile);
+
+        const cloudinaryUrl = extractImageUrl(uploadResult);
+
+        if (
+          !cloudinaryUrl ||
+          !cloudinaryUrl.startsWith('https://res.cloudinary.com/')
+        ) {
+          throw new Error(
+            'Image upload did not return a valid Cloudinary URL.'
+          );
+        }
+
+        // Save the permanent URL, never the browser preview URL.
+        productPayload.imageUrl = cloudinaryUrl;
+      } else {
+        // A manually entered permanent URL is allowed.
+        // A temporary blob URL must never reach PostgreSQL.
+        if (
+          productPayload.imageUrl &&
+          !isPermanentImageUrl(productPayload.imageUrl)
+        ) {
+          throw new Error(
+            'Invalid image URL. Please select the image again or enter a permanent image URL.'
+          );
         }
       }
 
-      // 2. Submit product payload to Spring Boot POST /api/products
-      const response = await productService.createProduct(cleanedPayload);
-      showToast('Product successfully created on Spring Boot backend!', 'success');
+      // 2. Create product in PostgreSQL through Spring Boot.
+      const response =
+        await productService.createProduct(productPayload);
 
-      // Navigate to product details or list
-      const newId = response?.id || cleanedPayload.id;
+      // 3. Confirm successful creation.
+      showToast('Product successfully created!', 'success');
+
+      const newId = response?.id;
+
       if (newId) {
         navigate(`/products/${newId}`);
       } else {
+        showToast(
+          'Product created, but the backend did not return its ID.',
+          'warning'
+        );
         navigate('/products');
       }
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to create product on backend.');
+      console.error('Product creation error:', err);
+
+      const message =
+        err.response?.data?.message ||
+        (typeof err.response?.data === 'string'
+          ? err.response.data
+          : null) ||
+        err.message ||
+        'Failed to create product.';
+
+      setErrorMessage(message);
+      showToast(message, 'danger');
     } finally {
       setSubmitting(false);
     }
@@ -50,25 +117,56 @@ export const AddProduct = () => {
   return (
     <div className="page-container">
       {/* Breadcrumb Navigation */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-        <Link to="/products" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '13px',
+          color: '#64748b',
+          marginBottom: '16px'
+        }}
+      >
+        <Link
+          to="/products"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            color: '#64748b'
+          }}
+        >
           <ArrowLeft size={14} />
           <span>Products</span>
         </Link>
+
         <ChevronRight size={14} />
-        <span style={{ color: '#0f172a', fontWeight: 600 }}>Add New Product</span>
+
+        <span
+          style={{
+            color: '#0f172a',
+            fontWeight: 600
+          }}
+        >
+          Add New Product
+        </span>
       </div>
 
-      <div className="page-header" style={{ marginBottom: '24px' }}>
+      {/* Page Header */}
+      <div
+        className="page-header"
+        style={{ marginBottom: '24px' }}
+      >
         <div className="page-title-group">
           <h1>Add New Product</h1>
           <p className="page-subtitle">
-            Collects product information and dispatches a <code>POST /api/products</code> payload to your backend.
+            Add product information and upload product images
+            to Cloudinary.
           </p>
         </div>
       </div>
 
-      {/* Backend Submission Error Banner */}
+      {/* Submission Error */}
       {errorMessage && (
         <div
           style={{
@@ -85,15 +183,30 @@ export const AddProduct = () => {
           }}
         >
           <AlertCircle size={20} style={{ flexShrink: 0 }} />
+
           <div>
-            <div style={{ fontWeight: 600, fontSize: '14px' }}>Backend Submission Failed</div>
-            <div style={{ fontSize: '13px' }}>{errorMessage}</div>
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: '14px'
+              }}
+            >
+              Product Submission Failed
+            </div>
+
+            <div style={{ fontSize: '13px' }}>
+              {errorMessage}
+            </div>
           </div>
         </div>
       )}
 
       {/* Product Form */}
-      <ProductForm onSubmit={handleCreate} isEdit={false} submitting={submitting} />
+      <ProductForm
+        onSubmit={handleCreate}
+        isEdit={false}
+        submitting={submitting}
+      />
     </div>
   );
 };

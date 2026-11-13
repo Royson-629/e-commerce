@@ -303,7 +303,7 @@ export const Categories = () => {
                   <td>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
                       <Package size={14} color="#64748b" />
-                      {category.productCount ?? category.numberOfProducts ?? '—'}
+                      {category.linkedProducts ?? 0}
                     </span>
                   </td>
                   <td>

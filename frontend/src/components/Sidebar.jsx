@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -11,7 +12,46 @@ import {
   Store
 } from 'lucide-react';
 
-export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => {
+const SETTINGS_STORAGE_KEY = 'ecommerce_store_settings';
+
+const getStoreSettings = () => {
+  try {
+    const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch (error) {
+    console.error('Failed to load store settings:', error);
+    return {};
+  }
+};
+
+export const Sidebar = ({
+  isCollapsed,
+  setIsCollapsed,
+  mobileOpen,
+  setMobileOpen
+}) => {
+  const [storeSettings, setStoreSettings] = useState(getStoreSettings);
+
+  useEffect(() => {
+    const updateStoreSettings = () => {
+      setStoreSettings(getStoreSettings());
+    };
+
+    window.addEventListener('storeSettingsUpdated', updateStoreSettings);
+
+    // Also handle changes from another browser tab
+    window.addEventListener('storage', updateStoreSettings);
+
+    return () => {
+      window.removeEventListener('storeSettingsUpdated', updateStoreSettings);
+      window.removeEventListener('storage', updateStoreSettings);
+    };
+  }, []);
+
+  const storeName = storeSettings.storeName?.trim() || 'E-Commerce Store';
+  const storeTagline =
+    storeSettings.storeTagline?.trim() || 'Control Center';
+
   const navItems = [
     {
       to: '/',
@@ -58,17 +98,31 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen
         />
       )}
 
-      <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
+      <aside
+        className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${
+          mobileOpen ? 'mobile-open' : ''
+        }`}
+      >
         {/* Sidebar Header */}
         <div className="sidebar-header">
-          <NavLink to="/" className="brand-wrapper" onClick={handleLinkClick}>
+          <NavLink
+            to="/"
+            className="brand-wrapper"
+            onClick={handleLinkClick}
+          >
             <div className="brand-logo-icon">
               <Store size={20} />
             </div>
+
             {!isCollapsed && (
               <div className="brand-text-block">
-                <span className="brand-title">E-Commerce Admin</span>
-                <span className="brand-badge">Control Center</span>
+                <span className="brand-title" title={storeName}>
+                  {storeName}
+                </span>
+
+                <span className="brand-badge">
+                  {storeTagline}
+                </span>
               </div>
             )}
           </NavLink>
@@ -79,16 +133,25 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen
             onClick={() => setIsCollapsed(!isCollapsed)}
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            {isCollapsed ? (
+              <ChevronRight size={18} />
+            ) : (
+              <ChevronLeft size={18} />
+            )}
           </button>
         </div>
 
         {/* Sidebar Navigation */}
         <nav className="sidebar-nav">
-          {!isCollapsed && <div className="sidebar-section-title">Navigation</div>}
+          {!isCollapsed && (
+            <div className="sidebar-section-title">
+              Navigation
+            </div>
+          )}
 
           {navItems.map((item) => {
             const Icon = item.icon;
+
             return (
               <NavLink
                 key={item.to}
@@ -101,8 +164,11 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen
                 title={isCollapsed ? item.label : undefined}
               >
                 <Icon size={19} className="sidebar-link-icon" />
+
                 {!isCollapsed && (
-                  <span style={{ flex: 1 }}>{item.label}</span>
+                  <span style={{ flex: 1 }}>
+                    {item.label}
+                  </span>
                 )}
               </NavLink>
             );
@@ -113,10 +179,16 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen
         <div className="sidebar-footer">
           <div className="admin-profile-card">
             <div className="admin-avatar">AD</div>
+
             {!isCollapsed && (
               <div className="admin-details">
-                <span className="admin-name">Administrator</span>
-                <span className="admin-role">Spring Boot Connected</span>
+                <span className="admin-name">
+                  Administrator
+                </span>
+
+                <span className="admin-role">
+                  Spring Boot Connected
+                </span>
               </div>
             )}
           </div>

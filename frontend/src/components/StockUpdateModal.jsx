@@ -13,7 +13,7 @@ export const StockUpdateModal = ({ isOpen, onClose, product, onSuccess }) => {
 
   useEffect(() => {
     if (product) {
-      setAmount(product.stock !== undefined ? product.stock.toString() : '0');
+      setAmount(product.stockQuantity !== undefined ? product.stockQuantity.toString() : '0');
       setMode('set');
       setReason('');
       setErrorMessage(null);
@@ -22,7 +22,7 @@ export const StockUpdateModal = ({ isOpen, onClose, product, onSuccess }) => {
 
   if (!isOpen || !product) return null;
 
-  const currentStock = Number(product.stock) || 0;
+  const currentStock = Number(product.stockQuantity) || 0;
   const numInput = Number(amount) || 0;
 
   let calculatedStock = currentStock;
